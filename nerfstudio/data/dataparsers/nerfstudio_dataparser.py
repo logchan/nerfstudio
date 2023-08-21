@@ -24,15 +24,15 @@ import torch
 from PIL import Image
 
 from nerfstudio.cameras import camera_utils
-from nerfstudio.cameras.cameras import CAMERA_MODEL_TO_TYPE, Cameras, CameraType
-from nerfstudio.data.dataparsers.base_dataparser import DataParser, DataParserConfig, DataparserOutputs
+from nerfstudio.cameras.cameras import (CAMERA_MODEL_TO_TYPE, Cameras,
+                                        CameraType)
+from nerfstudio.data.dataparsers.base_dataparser import (DataParser,
+                                                         DataParserConfig,
+                                                         DataparserOutputs)
 from nerfstudio.data.scene_box import SceneBox
 from nerfstudio.data.utils.dataparsers_utils import (
-    get_train_eval_split_filename,
-    get_train_eval_split_fraction,
-    get_train_eval_split_interval,
-    get_train_eval_split_all,
-)
+    get_train_eval_split_all, get_train_eval_split_filename,
+    get_train_eval_split_fraction, get_train_eval_split_interval)
 from nerfstudio.utils.io import load_from_json
 from nerfstudio.utils.rich_utils import CONSOLE
 
@@ -61,7 +61,7 @@ class NerfstudioDataParserConfig(DataParserConfig):
     """Whether to automatically scale the poses to fit in +/- 1 bounding box."""
     eval_mode: Literal["fraction", "filename", "interval", "all"] = "fraction"
     """
-    The method to use for splitting the dataset into train and eval. 
+    The method to use for splitting the dataset into train and eval.
     Fraction splits based on a percentage for train and the remaining for eval.
     Filename splits based on filenames containing train/eval.
     Interval uses every nth frame for eval.
@@ -351,5 +351,17 @@ class Nerfstudio(DataParser):
                 self.downscale_factor = self.config.downscale_factor
 
         if self.downscale_factor > 1:
-            return data_dir / f"{downsample_folder_prefix}{self.downscale_factor}" / filepath.name
+            prefix_dir = data_dir / f"{downsample_folder_prefix}{self.downscale_factor}"
+            searches = (
+                prefix_dir,
+                prefix_dir / filepath.parent,
+            )
+            for extension in [".jpg", ".jpeg", ".png"]:
+                for search in searches:
+                    file = search / f"{filepath.stem}{extension}"
+                    if file.exists():
+                        return file
+
+            raise ValueError(f"Unable to find {filepath} in {prefix_dir}")
+
         return data_dir / filepath
