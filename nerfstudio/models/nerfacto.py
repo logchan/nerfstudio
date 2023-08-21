@@ -29,21 +29,22 @@ from torchmetrics.image import PeakSignalNoiseRatio
 from torchmetrics.image.lpip import LearnedPerceptualImagePatchSimilarity
 
 from nerfstudio.cameras.rays import RayBundle, RaySamples
-from nerfstudio.engine.callbacks import TrainingCallback, TrainingCallbackAttributes, TrainingCallbackLocation
+from nerfstudio.engine.callbacks import (TrainingCallback,
+                                         TrainingCallbackAttributes,
+                                         TrainingCallbackLocation)
 from nerfstudio.field_components.field_heads import FieldHeadNames
 from nerfstudio.field_components.spatial_distortions import SceneContraction
 from nerfstudio.fields.density_fields import HashMLPDensityField
 from nerfstudio.fields.nerfacto_field import NerfactoField
 from nerfstudio.model_components.losses import (
-    MSELoss,
-    distortion_loss,
-    interlevel_loss,
-    orientation_loss,
-    pred_normal_loss,
-    scale_gradients_by_distance_squared,
-)
-from nerfstudio.model_components.ray_samplers import ProposalNetworkSampler, UniformSampler
-from nerfstudio.model_components.renderers import AccumulationRenderer, DepthRenderer, NormalsRenderer, RGBRenderer
+    MSELoss, distortion_loss, interlevel_loss, orientation_loss,
+    pred_normal_loss, scale_gradients_by_distance_squared)
+from nerfstudio.model_components.ray_samplers import (ProposalNetworkSampler,
+                                                      UniformSampler)
+from nerfstudio.model_components.renderers import (AccumulationRenderer,
+                                                   DepthRenderer,
+                                                   NormalsRenderer,
+                                                   RGBRenderer)
 from nerfstudio.model_components.scene_colliders import NearFarCollider
 from nerfstudio.model_components.shaders import NormalsShader
 from nerfstudio.models.base_model import Model, ModelConfig
@@ -378,7 +379,7 @@ class NerfactoModel(Model):
             accumulation=outputs["accumulation"],
         )
 
-        combined_rgb = torch.cat([gt_rgb, predicted_rgb], dim=1)
+        pred_image = torch.cat([predicted_rgb], dim=1)
         combined_acc = torch.cat([acc], dim=1)
         combined_depth = torch.cat([depth], dim=1)
 
@@ -394,7 +395,7 @@ class NerfactoModel(Model):
         metrics_dict = {"psnr": float(psnr.item()), "ssim": float(ssim)}  # type: ignore
         metrics_dict["lpips"] = float(lpips)
 
-        images_dict = {"img": combined_rgb, "accumulation": combined_acc, "depth": combined_depth}
+        images_dict = {"img": pred_image, "accumulation": combined_acc, "depth": combined_depth}
 
         for i in range(self.config.num_proposal_iterations):
             key = f"prop_depth_{i}"

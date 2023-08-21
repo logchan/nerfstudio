@@ -22,30 +22,25 @@ from abc import abstractmethod
 from dataclasses import dataclass, field
 from pathlib import Path
 from time import time
-from typing import Any, Dict, List, Literal, Mapping, Optional, Tuple, Type, Union, cast
+from typing import (Any, Dict, List, Literal, Mapping, Optional, Tuple, Type,
+                    Union, cast)
 
 import torch
 import torch.distributed as dist
 from PIL import Image
-from rich.progress import (
-    BarColumn,
-    MofNCompleteColumn,
-    Progress,
-    TextColumn,
-    TimeElapsedColumn,
-)
+from rich.progress import (BarColumn, MofNCompleteColumn, Progress, TextColumn,
+                           TimeElapsedColumn)
 from torch import nn
+from torch.cuda.amp.grad_scaler import GradScaler
 from torch.nn import Parameter
 from torch.nn.parallel import DistributedDataParallel as DDP
-from torch.cuda.amp.grad_scaler import GradScaler
 
 from nerfstudio.configs import base_config as cfg
-from nerfstudio.data.datamanagers.base_datamanager import (
-    DataManager,
-    DataManagerConfig,
-    VanillaDataManager,
-)
-from nerfstudio.engine.callbacks import TrainingCallback, TrainingCallbackAttributes
+from nerfstudio.data.datamanagers.base_datamanager import (DataManager,
+                                                           DataManagerConfig,
+                                                           VanillaDataManager)
+from nerfstudio.engine.callbacks import (TrainingCallback,
+                                         TrainingCallbackAttributes)
 from nerfstudio.models.base_model import Model, ModelConfig
 from nerfstudio.utils import profiler
 
@@ -184,8 +179,12 @@ class Pipeline(nn.Module):
     @abstractmethod
     @profiler.time_function
     def get_average_eval_image_metrics(
-        self, step: Optional[int] = None, output_path: Optional[Path] = None, get_std: bool = False
-    ):
+        self,
+        step: Optional[int] = None,
+        output_path: Optional[Path] = None,
+        get_std: bool = False,
+        get_raw: bool = False,
+    ) -> typing.Union[dict[str, float], tuple[dict[str, float], dict[str, float]]]:
         """Iterate over all the images in the eval dataset and get the average.
 
         Args:
@@ -358,7 +357,11 @@ class VanillaPipeline(Pipeline):
 
     @profiler.time_function
     def get_average_eval_image_metrics(
-        self, step: Optional[int] = None, output_path: Optional[Path] = None, get_std: bool = False
+        self,
+        step: Optional[int] = None,
+        output_path: Optional[Path] = None,
+        get_std: bool = False,
+        get_raw: bool = False,
     ):
         """Iterate over all the images in the eval dataset and get the average.
 
@@ -393,10 +396,12 @@ class VanillaPipeline(Pipeline):
                 if output_path is not None:
                     camera_indices = camera_ray_bundle.camera_indices
                     assert camera_indices is not None
+                    file_name = f"{int(camera_indices[0, 0, 0]):06d}.png"
+
                     for key, val in images_dict.items():
-                        Image.fromarray((val * 255).byte().cpu().numpy()).save(
-                            output_path / "{0:06d}-{1}.jpg".format(int(camera_indices[0, 0, 0]), key)
-                        )
+                        folder = output_path / key
+                        folder.mkdir(exist_ok=True)
+                        Image.fromarray((val * 255).byte().cpu().numpy()).save(folder / file_name, optimize=True)
                 assert "num_rays_per_sec" not in metrics_dict
                 metrics_dict["num_rays_per_sec"] = num_rays / (time() - inner_start)
                 fps_str = "fps"
@@ -406,18 +411,22 @@ class VanillaPipeline(Pipeline):
                 progress.advance(task)
         # average the metrics list
         metrics_dict = {}
+        raw_metrics_dict = {}
         for key in metrics_dict_list[0].keys():
+            metric_data = torch.tensor([metrics_dict[key] for metrics_dict in metrics_dict_list])
+            if get_raw:
+                raw_metrics_dict[key] = metric_data.tolist()
+
             if get_std:
-                key_std, key_mean = torch.std_mean(
-                    torch.tensor([metrics_dict[key] for metrics_dict in metrics_dict_list])
-                )
+                key_std, key_mean = torch.std_mean(metric_data)
                 metrics_dict[key] = float(key_mean)
                 metrics_dict[f"{key}_std"] = float(key_std)
             else:
-                metrics_dict[key] = float(
-                    torch.mean(torch.tensor([metrics_dict[key] for metrics_dict in metrics_dict_list]))
-                )
+                metrics_dict[key] = float(torch.mean(metric_data))
         self.train()
+
+        if get_raw:
+            return metrics_dict, raw_metrics_dict
         return metrics_dict
 
     def load_pipeline(self, loaded_state: Dict[str, Any], step: int) -> None:
