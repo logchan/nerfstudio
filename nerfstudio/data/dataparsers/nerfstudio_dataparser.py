@@ -197,7 +197,7 @@ class Nerfstudio(DataParser):
                 raise RuntimeError(f"Some filenames for split {split} were not found: {unmatched_filenames}.")
 
             indices = [i for i, path in enumerate(image_filenames) if path in split_filenames]
-            CONSOLE.log(f"[yellow] Dataset is overriding {split}_indices to {indices}")
+            CONSOLE.log(f"[yellow] Dataset is overriding {split}_indices to {len(indices)} indices")
             indices = np.array(indices, dtype=np.int32)
         elif has_split_files_spec:
             raise RuntimeError(f"The dataset's list of filenames for split {split} is missing.")
@@ -223,6 +223,11 @@ class Nerfstudio(DataParser):
                 indices = i_eval
             else:
                 raise ValueError(f"Unknown dataparser split {split}")
+
+        if len(indices) <= 50:
+            CONSOLE.log(f"[yellow] {split} has {len(indices)} files: {list(indices)}")
+        else:
+            CONSOLE.log(f"[yellow] {split} has {len(indices)} files, first 50: {list(indices[:50])}")
 
         if "orientation_override" in meta:
             orientation_method = meta["orientation_override"]
